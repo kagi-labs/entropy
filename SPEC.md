@@ -1,14 +1,14 @@
-# Entropy
+# Metsuke 目付
 
-**A standalone CLI tool for tracking code entropy and turning review mistakes into enforceable rules.**
+**The Code Inspector. Tracks code entropy, captures review mistakes as enforceable rules, and scans dependencies for vulnerabilities.**
 
-Inspired by HashiCorp-style tooling: single binary, focused purpose, zero dependencies.
+Inspired by HashiCorp-style tooling: single binary, focused purpose, zero dependencies. Named after the Edo-period inspectors (目付) who monitored conduct and enforced discipline across the shogunate.
 
 ## Vision
 
 AI-accelerated development creates technical debt faster than teams realize. Mistakes get repeated because lessons aren't captured. Code reviews find the same issues over and over.
 
-**Entropy** closes the loop: plan → develop → review → capture mistakes → enforce as rules → better future code. Every mistake becomes a permanent guardrail.
+**Metsuke** closes the loop: plan → develop → review → capture mistakes → enforce as rules → better future code. Every mistake becomes a permanent guardrail.
 
 ## The Feedback Loop
 
@@ -37,22 +37,22 @@ AI-accelerated development creates technical debt faster than teams realize. Mis
 ## CLI Commands
 
 ```bash
-entropy init               # Initialize .entropy/ in a project
-entropy score              # Calculate current health score
-entropy score --json       # Machine-readable output
-entropy check              # Run all rules against staged/changed files
-entropy check --ci         # Strict mode for CI (non-zero exit on violations)
-entropy deps               # Scan dependencies for known vulnerabilities
-entropy deps --severity high  # Filter by severity
-entropy add-rule           # Capture a new rule from a mistake
-entropy trend              # Show score history (ASCII chart in terminal)
-entropy diff [branch]      # Compare entropy between current and target branch
-entropy blame [file]       # Show which changes introduced the most entropy
-entropy scan --ai          # Deep AI-powered security & complexity analysis
-entropy doctor             # Diagnose codebase health issues with suggestions
-entropy export             # Export rules + scores for external dashboards
-entropy serve              # Local web dashboard (localhost)
-entropy mcp                # Start MCP server for agent integration
+metsuke init               # Initialize .metsuke/ in a project
+metsuke score              # Calculate current health score
+metsuke score --json       # Machine-readable output
+metsuke check              # Run all rules against staged/changed files
+metsuke check --ci         # Strict mode for CI (non-zero exit on violations)
+metsuke deps               # Scan dependencies for known vulnerabilities
+metsuke deps --severity high  # Filter by severity
+metsuke add-rule           # Capture a new rule from a mistake
+metsuke trend              # Show score history (ASCII chart in terminal)
+metsuke diff [branch]      # Compare entropy between current and target branch
+metsuke blame [file]       # Show which changes introduced the most entropy
+metsuke scan --ai          # Deep AI-powered security & complexity analysis
+metsuke doctor             # Diagnose codebase health issues with suggestions
+metsuke export             # Export rules + scores for external dashboards
+metsuke serve              # Local web dashboard (localhost)
+metsuke mcp                # Start MCP server for agent integration
 ```
 
 ## Core Components
@@ -113,9 +113,9 @@ Output: **Health score (0-100)** per file, per module, and aggregate.
 Checks project dependencies against the [OSV (Open Source Vulnerabilities)](https://osv.dev) database — Google's free, open, universal vulnerability database covering Go, npm, PyPI, crates.io, and more.
 
 ```bash
-entropy deps                 # Scan dependencies, check for known vulns
-entropy deps --format json   # Machine-readable output for CI
-entropy deps --severity high # Only show high/critical
+metsuke deps                 # Scan dependencies, check for known vulns
+metsuke deps --format json   # Machine-readable output for CI
+metsuke deps --severity high # Only show high/critical
 ```
 
 **How it works:**
@@ -143,7 +143,7 @@ MEDIUM    golang.org/x/net@v0.19.0
 Score impact: -15 (2 vulns: 1 critical, 1 medium)
 ```
 
-**Language-specific tools entropy wraps:**
+**Language-specific tools metsuke wraps:**
 - Go: `govulncheck` (official, reachability analysis)
 - Python: `pip-audit`
 - Node: `npm audit`
@@ -156,7 +156,7 @@ Falls back to OSV API when language-specific tools aren't installed.
 When a mistake is found during review, capture it:
 
 ```yaml
-# .entropy/rules/no-raw-sql.yaml
+# .metsuke/rules/no-raw-sql.yaml
 id: no-raw-sql
 severity: error
 category: security
@@ -169,15 +169,15 @@ languages: [go]
 ```
 
 **Rule properties:**
-- **Project-scoped** — stored in `.entropy/rules/`, committed with code
+- **Project-scoped** — stored in `.metsuke/rules/`, committed with code
 - **Machine-readable** — YAML with regex patterns
 - **Traceable** — linked back to the PR/review where the mistake was found
 - **Enforceable** — checked in CI, pre-commit, or editor
 
 **Rule templates** (built-in packs):
-- `entropy init --pack security` — OWASP top 10 patterns
-- `entropy init --pack performance` — common perf anti-patterns
-- `entropy init --pack ai-hygiene` — AI-generated code smells
+- `metsuke init --pack security` — OWASP top 10 patterns
+- `metsuke init --pack performance` — common perf anti-patterns
+- `metsuke init --pack ai-hygiene` — AI-generated code smells
 
 ### 3. Storage
 
@@ -186,8 +186,8 @@ languages: [go]
 **SQLite** for time-series data (scores, events, trends). YAML files for human-editable rules.
 
 ```
-.entropy/
-├── entropy.db              # SQLite: scores, events, trends
+.metsuke/
+├── metsuke.db              # SQLite: scores, events, trends
 ├── config.yaml             # Project-level settings
 └── rules/                  # YAML rule files (human-editable, git-trackable)
     ├── no-raw-sql.yaml
@@ -199,30 +199,30 @@ languages: [go]
 **Why SQLite + YAML:**
 - SQLite: fast queries for trending, dashboards, CI reporting. No server needed.
 - YAML rules: human-readable, diffable in PRs, easy to write by hand or generate.
-- Everything in `.entropy/` — git-trackable, portable, zero external dependencies.
+- Everything in `.metsuke/` — git-trackable, portable, zero external dependencies.
 
 #### Export (self-hosted teams)
 
 For teams that want to aggregate data across repos into their own infrastructure:
 
 ```bash
-entropy export --format json           # Dump scores + rules as JSON
-entropy export --db postgres://...     # Push to external PostgreSQL/MySQL
-entropy export --s3 s3://bucket/path   # Push to S3-compatible storage
-entropy export --webhook https://...   # POST to any endpoint (CI integration)
+metsuke export --format json           # Dump scores + rules as JSON
+metsuke export --db postgres://...     # Push to external PostgreSQL/MySQL
+metsuke export --s3 s3://bucket/path   # Push to S3-compatible storage
+metsuke export --webhook https://...   # POST to any endpoint (CI integration)
 ```
 
 Teams can pipe this into Grafana, Datadog, their own BI tools — whatever they already use.
 
-#### Entropy Cloud (hosted SaaS — paid tier)
+#### Metsuke Cloud (hosted SaaS — paid tier)
 
 **The business model:** Open-source CLI is free forever. Hosted dashboard is subscription-based.
 
-Teams connect their repos → entropy data flows to our hosted platform → we provide:
+Teams connect their repos → data flows to our hosted platform → we provide:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                 Entropy Cloud                        │
+│                 Metsuke Cloud                        │
 ├─────────────────────────────────────────────────────┤
 │                                                      │
 │  📊 Team Dashboard                                   │
@@ -252,23 +252,23 @@ Teams connect their repos → entropy data flows to our hosted platform → we p
 
 **How data flows:**
 ```
-Developer machine / CI                    Entropy Cloud
-┌──────────────┐                         ┌──────────────┐
-│ entropy check│──── scores + rules ───→ │  Ingest API  │
-│ entropy score│     (JSON over HTTPS)   │              │
-│ entropy deps │                         │  PostgreSQL  │
-└──────────────┘                         │  + S3        │
+Developer machine / CI                    Metsuke Cloud
+┌───────────────┐                        ┌──────────────┐
+│ metsuke check │── scores + rules ───→  │  Ingest API  │
+│ metsuke score │   (JSON over HTTPS)    │              │
+│ metsuke deps  │                        │  PostgreSQL  │
+└───────────────┘                        │  + S3        │
                                          │              │
        ◄──── dashboards, alerts, ────────│  Web UI      │
              notifications               └──────────────┘
 ```
 
 ```bash
-# Connect a repo to Entropy Cloud
-entropy cloud login
-entropy cloud connect          # Links current repo to your org
-entropy cloud push             # Manual push (or auto via CI)
-entropy cloud status           # Check sync status
+# Connect a repo to Metsuke Cloud
+metsuke cloud login
+metsuke cloud connect          # Links current repo to your org
+metsuke cloud push             # Manual push (or auto via CI)
+metsuke cloud status           # Check sync status
 ```
 
 **Pricing model (planned):**
@@ -281,7 +281,7 @@ entropy cloud status           # Check sync status
 
 ### 4. Dashboard
 
-**Terminal UI** (`entropy trend`):
+**Terminal UI** (`metsuke trend`):
 ```
 Health Score — last 30 days
 100 ┤
@@ -299,7 +299,7 @@ Top issues:
   ✗ db/queries.go      rule: no-raw-sql
 ```
 
-**Web dashboard** (`entropy serve`):
+**Web dashboard** (`metsuke serve`):
 - Local-only web UI on localhost
 - Score trends over time (charts)
 - Rule violation heatmap
@@ -310,8 +310,8 @@ Top issues:
 
 **GitHub Actions:**
 ```yaml
-- name: Entropy Check
-  uses: kagi-labs/entropy-action@v1
+- name: Metsuke Check
+  uses: kagi-labs/metsuke-action@v1
   with:
     fail-on: error          # Fail build on error-severity rules
     score-threshold: 70     # Fail if health drops below 70
@@ -321,12 +321,12 @@ Top issues:
 **Pre-commit hook:**
 ```yaml
 # .pre-commit-config.yaml
-- repo: https://github.com/kagi-labs/entropy
+- repo: https://github.com/kagi-labs/metsuke
   hooks:
-    - id: entropy-check
+    - id: metsuke-check
 ```
 
-**GitLab CI, Jenkins, etc.:** Just run `entropy check --ci`
+**GitLab CI, Jenkins, etc.:** Just run `metsuke check --ci`
 
 ### 6. AI Security & Complexity Analysis
 
@@ -338,17 +338,17 @@ Inspired by [Anthropic's Claude Code Security](https://www.anthropic.com/news/cl
 - **Confidence ratings:** Each finding gets a confidence score (high: deterministic check, medium: heuristic, low: AI inference)
 - **AI anti-pattern detection:** Detect AI-generated code smells (excessive abstraction, inconsistent naming, duplicated-with-slight-variation patterns)
 - **Auto-rule suggestion:** After N similar review comments, suggest creating a rule
-- **CLAUDE.md / .cursorrules sync:** Export entropy rules as AI coding assistant instructions
+- **CLAUDE.md / .cursorrules sync:** Export metsuke rules as AI coding assistant instructions
 
 ```bash
-entropy scan --ai          # Deep AI-powered analysis (requires LLM)
-entropy scan --ai --model local  # Use local model (Ollama)
-entropy scan --ai --model api    # Use API (Claude/GPT)
+metsuke scan --ai          # Deep AI-powered analysis (requires LLM)
+metsuke scan --ai --model local  # Use local model (Ollama)
+metsuke scan --ai --model api    # Use API (Claude/GPT)
 ```
 
 ### 7. Kagi Labs Ecosystem Integration
 
-Entropy is standalone but designed to plug into the kagi-labs agent OS:
+Metsuke is standalone but designed to plug into the kagi-labs agent OS:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -359,39 +359,39 @@ Entropy is standalone but designed to plug into the kagi-labs agent OS:
 ├──────────┴───────────┴──────────┴───────────────────────┤
 │                   Tool Layer                             │
 ├──────────┬───────────┬──────────────────────────────────┤
-│ Entropy  │  Kura     │  Kaji                             │
-│ (health) │  (store)  │  (forge)                          │
+│ Metsuke  │  Kura     │  Kaji                             │
+│ (inspect)│  (store)  │  (forge)                          │
 └──────────┴───────────┴──────────────────────────────────┘
 ```
 
 **Integration points:**
 
-| System | How Entropy connects | Direction |
+| System | How Metsuke connects | Direction |
 |--------|---------------------|-----------|
-| **Aegis** (security control plane) | Entropy feeds security findings to Aegis for human-in-the-loop approval before auto-fixes. Aegis policy rules can trigger entropy scans on tool calls | Entropy ↔ Aegis |
-| **Hashi** (task engine) | Hashi delegates `entropy check` as a task in CI/review workflows. Entropy results inform Hashi's task planning (skip deploy if score < threshold) | Hashi → Entropy |
-| **Kaji** (agent forge) | Kaji's review phase runs `entropy check` automatically. Findings feed back into spec refinement. Codex reviewer gets entropy context | Kaji → Entropy |
-| **Kura** (storehouse) | Entropy scores + rule violation history stored in Kura for cross-project search and long-term trending | Entropy → Kura |
-| **Mikado** (soul/nervous system) | Entropy health events published to Mikado's event bus. Score drops trigger alerts through the nervous system | Entropy → Mikado |
-| **Minato** (channel harbor) | Entropy reports routed through Minato to Discord/Slack. "Score dropped to 62 on project X" | Entropy → Minato |
+| **Aegis** (security control plane) | Metsuke feeds security findings to Aegis for human-in-the-loop approval before auto-fixes. Aegis policy rules can trigger metsuke scans on tool calls | Metsuke ↔ Aegis |
+| **Hashi** (task engine) | Hashi delegates `metsuke check` as a task in CI/review workflows. Metsuke results inform Hashi's task planning (skip deploy if score < threshold) | Hashi → Metsuke |
+| **Kaji** (agent forge) | Kaji's review phase runs `metsuke check` automatically. Findings feed back into spec refinement. Codex reviewer gets metsuke context | Kaji → Metsuke |
+| **Kura** (storehouse) | Metsuke scores + rule violation history stored in Kura for cross-project search and long-term trending | Metsuke → Kura |
+| **Mikado** (soul/nervous system) | Metsuke health events published to Mikado's event bus. Score drops trigger alerts through the nervous system | Metsuke → Mikado |
+| **Minato** (channel harbor) | Metsuke reports routed through Minato to Discord/Slack. "Score dropped to 62 on project X" | Metsuke → Minato |
 
 **MCP server mode:**
 ```bash
-entropy mcp                # Start MCP server — expose rules and scores to any AI agent
+metsuke mcp                # Start MCP server — expose rules and scores to any AI agent
 ```
 
 Tools exposed via MCP:
-- `entropy_score(path)` — get health score for a codebase
-- `entropy_check(path, files)` — check specific files against rules
-- `entropy_rules(path)` — list all project rules
-- `entropy_deps(path)` — check dependency vulnerabilities
-- `entropy_add_rule(rule)` — create a new rule programmatically
+- `metsuke_score(path)` — get health score for a codebase
+- `metsuke_check(path, files)` — check specific files against rules
+- `metsuke_rules(path)` — list all project rules
+- `metsuke_deps(path)` — check dependency vulnerabilities
+- `metsuke_add_rule(rule)` — create a new rule programmatically
 
-This means any agent in the ecosystem (Claude, Codex, local models) can query and contribute to entropy data.
+This means any agent in the ecosystem (Claude, Codex, local models) can query and contribute to metsuke data.
 
 ### 8. Team Features (Future)
 
-- **Shared rule registry:** Publish/subscribe to rule packs (`entropy registry push/pull`)
+- **Shared rule registry:** Publish/subscribe to rule packs (`metsuke registry push/pull`)
 - **Org-wide baselines:** Set minimum scores across repos
 - **Review integration:** Auto-tag PRs with entropy impact (`+3 entropy`, `-5 entropy`)
 
@@ -431,45 +431,45 @@ This means any agent in the ecosystem (Claude, Codex, local models) can query an
 ## MVP Scope
 
 **Phase 1: Foundation**
-- [ ] `entropy init` — create `.entropy/` structure
-- [ ] `entropy score` — calculate complexity + duplication for Go codebases
+- [ ] `metsuke init` — create `.metsuke/` structure
+- [ ] `metsuke score` — calculate complexity + duplication for Go codebases
 - [ ] JSON + human-readable output
 - [ ] SQLite storage for score history
 
 **Phase 2: Rules**
 - [ ] YAML rule format
-- [ ] `entropy check` — match rules against files
-- [ ] `entropy add-rule` — capture new rule
+- [ ] `metsuke check` — match rules against files
+- [ ] `metsuke add-rule` — capture new rule
 - [ ] Pre-commit hook support
 
 **Phase 3: Trends & Dashboard**
-- [ ] `entropy trend` — ASCII chart in terminal
-- [ ] `entropy serve` — local web dashboard
-- [ ] `entropy diff` — compare branches
+- [ ] `metsuke trend` — ASCII chart in terminal
+- [ ] `metsuke serve` — local web dashboard
+- [ ] `metsuke diff` — compare branches
 - [ ] Score threshold alerts
 
 **Phase 4: AI Security & Complexity Analysis**
-- [ ] `entropy scan --ai` — LLM-powered semantic analysis
+- [ ] `metsuke scan --ai` — LLM-powered semantic analysis
 - [ ] Multi-stage verification (find → disprove → confirm)
 - [ ] Confidence ratings on findings
 - [ ] Local model support (Ollama)
 - [ ] CLAUDE.md / .cursorrules export
 
 **Phase 5: Export & Ecosystem Integration**
-- [ ] `entropy export` — JSON, PostgreSQL, S3, webhook targets
-- [ ] MCP server mode (`entropy mcp`)
+- [ ] `metsuke export` — JSON, PostgreSQL, S3, webhook targets
+- [ ] MCP server mode (`metsuke mcp`)
 - [ ] Aegis integration (security control plane)
 - [ ] Hashi integration (task delegation)
 - [ ] Minato integration (alert routing)
 - [ ] Kura integration (cross-project storage)
 
-**Phase 6: Entropy Cloud (SaaS)**
+**Phase 6: Metsuke Cloud (SaaS)**
 - [ ] Ingest API — receive scores/rules from CLI over HTTPS
 - [ ] Hosted PostgreSQL + S3 backend
 - [ ] Team dashboard — cross-repo trends, heatmaps, per-dev stats
 - [ ] Notifications — Slack/Discord/email alerts on score drops
 - [ ] Analytics — velocity vs entropy correlation, sprint budgets
-- [ ] `entropy cloud login/connect/push/status` CLI commands
+- [ ] `metsuke cloud login/connect/push/status` CLI commands
 
 **Phase 7: Multi-lang & Team**
 - [ ] Python + TypeScript support via tree-sitter
@@ -482,4 +482,4 @@ This means any agent in the ecosystem (Claude, Codex, local models) can query an
 
 > "The best time to fix a bug is when you first learn about it. The second best time is to make sure it never happens again."
 
-Most teams find the same mistakes repeatedly. Entropy closes the loop: **every mistake becomes a permanent guardrail.**
+Most teams find the same mistakes repeatedly. Metsuke closes the loop: **every mistake becomes a permanent guardrail.**
