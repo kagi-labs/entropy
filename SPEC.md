@@ -53,6 +53,13 @@ metsuke doctor             # Diagnose codebase health issues with suggestions
 metsuke export             # Export rules + scores for external dashboards
 metsuke serve              # Local web dashboard (localhost)
 metsuke mcp                # Start MCP server for agent integration
+
+# Codebase Index & Navigation
+metsuke index              # Build/update codebase index (incremental)
+metsuke symbols [query]    # Search symbols (functions, types, interfaces)
+metsuke callers [func]     # Show what calls this function
+metsuke deps [pkg]         # Show package dependency graph
+metsuke map [path]         # Show module structure overview
 ```
 
 ## Core Components
@@ -279,7 +286,68 @@ metsuke cloud status           # Check sync status
 | **Team** | $/month per repo | Hosted dashboard, alerts, cross-repo analytics, shared rules |
 | **Enterprise** | Custom | SSO, audit logs, SLA, custom integrations, on-prem option |
 
-### 4. Dashboard
+### 4. Codebase Index & Navigation
+
+Metsuke already parses the entire codebase for entropy scoring. Instead of discarding that structural data, we persist it as a queryable index — turning Metsuke into a **codebase GPS for AI agents**.
+
+**What gets indexed:**
+- **File tree** — module/package structure
+- **Symbols** — all functions, types, interfaces, constants, variables with locations
+- **Call graph** — who calls who (static analysis)
+- **Import graph** — package-level dependencies
+- **Doc comments** — godoc, JSDoc, docstrings
+- **Git ownership** — blame data (who owns what, last modified)
+
+**Storage:** Same SQLite database (`metsuke.db`). Index updates incrementally on file change (MD5 hash check, like the entropy scanner).
+
+**CLI usage:**
+```bash
+metsuke index                          # Build/update index
+metsuke symbols User                   # Find all symbols matching "User"
+metsuke symbols --type func auth       # Only functions matching "auth"
+metsuke callers validateToken          # What calls validateToken()?
+metsuke deps pkg/api                   # Dependency graph for a package
+metsuke map .                          # Overview of module structure
+metsuke map --depth 2                  # Limit depth
+```
+
+**Example output:**
+```
+$ metsuke symbols --type func auth
+
+  pkg/auth/handler.go:42      func HandleLogin(w, r)
+  pkg/auth/handler.go:87      func HandleLogout(w, r)
+  pkg/auth/middleware.go:15    func RequireAuth(next) Handler
+  pkg/auth/token.go:23        func ValidateToken(token) (*Claims, error)
+  pkg/auth/token.go:56        func RefreshToken(old) (string, error)
+
+5 symbols found
+
+$ metsuke callers ValidateToken
+
+  pkg/auth/middleware.go:22    RequireAuth()
+  pkg/api/routes.go:45        handleProtectedRoute()
+  pkg/ws/upgrade.go:18        upgradeWebSocket()
+
+3 callers found
+
+$ metsuke map --depth 2
+
+  pkg/
+  ├── api/          (12 files, 8 exported funcs, fan-out: 4)
+  ├── auth/         (5 files, 6 exported funcs, fan-out: 2)
+  ├── db/           (7 files, 11 exported funcs, fan-out: 1)
+  ├── models/       (4 files, 9 exported types, fan-out: 0)
+  └── ws/           (3 files, 4 exported funcs, fan-out: 3)
+```
+
+**Why this belongs in Metsuke (not a separate tool):**
+- The scanner already walks the full AST — indexing is a near-zero-cost addition
+- Same SQLite database, same incremental update logic
+- Coupling/dependency metrics need the import graph anyway
+- One binary, one MCP server, one `metsuke.db` — agents get health + navigation in one tool
+
+### 5. Dashboard
 
 **Terminal UI** (`metsuke trend`):
 ```
@@ -306,7 +374,7 @@ Top issues:
 - File-level drill-down
 - Exportable reports (HTML, JSON)
 
-### 5. CI/CD Integration
+### 6. CI/CD Integration
 
 **GitHub Actions:**
 ```yaml
@@ -328,7 +396,7 @@ Top issues:
 
 **GitLab CI, Jenkins, etc.:** Just run `metsuke check --ci`
 
-### 6. AI Security & Complexity Analysis
+### 7. AI Security & Complexity Analysis
 
 Inspired by [Anthropic's Claude Code Security](https://www.anthropic.com/news/claude-code-security) — but open, local-first, and integrated with the kagi-labs agent OS.
 
@@ -346,7 +414,7 @@ metsuke scan --ai --model local  # Use local model (Ollama)
 metsuke scan --ai --model api    # Use API (Claude/GPT)
 ```
 
-### 7. Kagi Labs Ecosystem Integration
+### 8. Kagi Labs Ecosystem Integration
 
 Metsuke is standalone but designed to plug into the kagi-labs agent OS:
 
@@ -381,15 +449,24 @@ metsuke mcp                # Start MCP server — expose rules and scores to any
 ```
 
 Tools exposed via MCP:
+
+**Health & Rules:**
 - `metsuke_score(path)` — get health score for a codebase
 - `metsuke_check(path, files)` — check specific files against rules
 - `metsuke_rules(path)` — list all project rules
 - `metsuke_deps(path)` — check dependency vulnerabilities
 - `metsuke_add_rule(rule)` — create a new rule programmatically
 
-This means any agent in the ecosystem (Claude, Codex, local models) can query and contribute to metsuke data.
+**Codebase Navigation:**
+- `metsuke_symbols(query, type?)` — search symbols (functions, types, interfaces)
+- `metsuke_callers(func)` — what calls this function?
+- `metsuke_map(path, depth?)` — module/package structure overview
+- `metsuke_find(description)` — natural language: "files that handle authentication"
+- `metsuke_deps_graph(pkg)` — package dependency graph
 
-### 8. Team Features (Future)
+This means any agent in the ecosystem (Claude, Codex, local models) can query health data AND navigate the codebase through a single MCP server.
+
+### 9. Team Features (Future)
 
 - **Shared rule registry:** Publish/subscribe to rule packs (`metsuke registry push/pull`)
 - **Org-wide baselines:** Set minimum scores across repos
@@ -405,7 +482,7 @@ This means any agent in the ecosystem (Claude, Codex, local models) can query an
 ├──────┴──────┴──────┴──────┴───────┴──────┴───────────────┤
 │                     Core Engine                           │
 ├──────────┬──────────┬────────────┬───────────┬───────────┤
-│ Scanner  │Rule Eval │Dep Auditor │ AI Engine │ Trends    │
+│ Scanner  │Rule Eval │Dep Auditor │ AI Engine │ Indexer   │
 ├──────────┴──────────┴────────────┴───────────┴───────────┤
 │                    Storage Layer                          │
 ├─────────────┬──────────────┬──────────────┬──────────────┤
