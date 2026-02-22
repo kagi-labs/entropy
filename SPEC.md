@@ -181,7 +181,9 @@ languages: [go]
 
 ### 3. Storage
 
-**SQLite** for time-series data (scores, events, trends). YAML files for human-editable rules. Best of both worlds.
+#### Local (default — free, self-contained)
+
+**SQLite** for time-series data (scores, events, trends). YAML files for human-editable rules.
 
 ```
 .entropy/
@@ -198,6 +200,84 @@ languages: [go]
 - SQLite: fast queries for trending, dashboards, CI reporting. No server needed.
 - YAML rules: human-readable, diffable in PRs, easy to write by hand or generate.
 - Everything in `.entropy/` — git-trackable, portable, zero external dependencies.
+
+#### Export (self-hosted teams)
+
+For teams that want to aggregate data across repos into their own infrastructure:
+
+```bash
+entropy export --format json           # Dump scores + rules as JSON
+entropy export --db postgres://...     # Push to external PostgreSQL/MySQL
+entropy export --s3 s3://bucket/path   # Push to S3-compatible storage
+entropy export --webhook https://...   # POST to any endpoint (CI integration)
+```
+
+Teams can pipe this into Grafana, Datadog, their own BI tools — whatever they already use.
+
+#### Entropy Cloud (hosted SaaS — paid tier)
+
+**The business model:** Open-source CLI is free forever. Hosted dashboard is subscription-based.
+
+Teams connect their repos → entropy data flows to our hosted platform → we provide:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 Entropy Cloud                        │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  📊 Team Dashboard                                   │
+│  ├── Score trends across all repos                   │
+│  ├── Cross-repo rule violation heatmap               │
+│  ├── Per-developer entropy contribution              │
+│  └── Historical comparison (this sprint vs last)     │
+│                                                      │
+│  🔔 Notifications & Alerts                           │
+│  ├── Slack/Discord/Email when score drops             │
+│  ├── Weekly digest: "Top 5 entropy sources"          │
+│  └── PR-level: "This PR adds +8 entropy"             │
+│                                                      │
+│  📈 Analytics & Reporting                            │
+│  ├── Team velocity vs entropy correlation            │
+│  ├── "Entropy budget" per sprint                     │
+│  ├── Dependency risk across all projects             │
+│  └── Executive summaries (PDF export)                │
+│                                                      │
+│  🤝 Team Collaboration                               │
+│  ├── Shared rule libraries across org                │
+│  ├── Review assignments based on entropy ownership   │
+│  └── Onboarding: "Here's what we've learned"        │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+**How data flows:**
+```
+Developer machine / CI                    Entropy Cloud
+┌──────────────┐                         ┌──────────────┐
+│ entropy check│──── scores + rules ───→ │  Ingest API  │
+│ entropy score│     (JSON over HTTPS)   │              │
+│ entropy deps │                         │  PostgreSQL  │
+└──────────────┘                         │  + S3        │
+                                         │              │
+       ◄──── dashboards, alerts, ────────│  Web UI      │
+             notifications               └──────────────┘
+```
+
+```bash
+# Connect a repo to Entropy Cloud
+entropy cloud login
+entropy cloud connect          # Links current repo to your org
+entropy cloud push             # Manual push (or auto via CI)
+entropy cloud status           # Check sync status
+```
+
+**Pricing model (planned):**
+
+| Tier | Price | Includes |
+|------|-------|---------|
+| **Open Source** | Free forever | CLI, local SQLite, all metrics, rules, local dashboard |
+| **Team** | $/month per repo | Hosted dashboard, alerts, cross-repo analytics, shared rules |
+| **Enterprise** | Custom | SSO, audit logs, SLA, custom integrations, on-prem option |
 
 ### 4. Dashboard
 
@@ -278,10 +358,10 @@ Entropy is standalone but designed to plug into the kagi-labs agent OS:
 │  (soul)  │  (comms)  │  (tasks) │  (security)           │
 ├──────────┴───────────┴──────────┴───────────────────────┤
 │                   Tool Layer                             │
-├──────────┬───────────┬──────────┬───────────────────────┤
-│ Entropy  │  Kura     │  Kaji    │  BMO Control Centre   │
-│ (health) │  (store)  │  (forge) │  (dashboard)          │
-└──────────┴───────────┴──────────┴───────────────────────┘
+├──────────┬───────────┬──────────────────────────────────┤
+│ Entropy  │  Kura     │  Kaji                             │
+│ (health) │  (store)  │  (forge)                          │
+└──────────┴───────────┴──────────────────────────────────┘
 ```
 
 **Integration points:**
@@ -294,7 +374,6 @@ Entropy is standalone but designed to plug into the kagi-labs agent OS:
 | **Kura** (storehouse) | Entropy scores + rule violation history stored in Kura for cross-project search and long-term trending | Entropy → Kura |
 | **Mikado** (soul/nervous system) | Entropy health events published to Mikado's event bus. Score drops trigger alerts through the nervous system | Entropy → Mikado |
 | **Minato** (channel harbor) | Entropy reports routed through Minato to Discord/Slack. "Score dropped to 62 on project X" | Entropy → Minato |
-| **BMO Control Centre** | Entropy dashboard embedded as a panel in the Control Centre web UI | Entropy → BCC |
 
 **MCP server mode:**
 ```bash
@@ -322,20 +401,21 @@ This means any agent in the ecosystem (Claude, Codex, local models) can query an
 ┌───────────────────────────────────────────────────────────┐
 │                      CLI (cobra)                          │
 ├──────┬──────┬──────┬──────┬───────┬──────┬───────────────┤
-│score │check │deps  │scan  │trend  │serve │ mcp           │
+│score │check │deps  │scan  │trend  │serve │ cloud / mcp   │
 ├──────┴──────┴──────┴──────┴───────┴──────┴───────────────┤
 │                     Core Engine                           │
 ├──────────┬──────────┬────────────┬───────────┬───────────┤
 │ Scanner  │Rule Eval │Dep Auditor │ AI Engine │ Trends    │
 ├──────────┴──────────┴────────────┴───────────┴───────────┤
 │                    Storage Layer                          │
-├─────────────┬──────────────┬─────────────────────────────┤
-│ SQLite (db) │ YAML (rules) │ OSV API (deps)              │
-├─────────────┴──────────────┴─────────────────────────────┤
+├─────────────┬──────────────┬──────────────┬──────────────┤
+│ SQLite      │ YAML (rules) │ OSV API      │ Export       │
+│ (local)     │              │ (deps)       │ (pg/s3/hook) │
+├─────────────┴──────────────┴──────────────┴──────────────┤
 │                  Integration Layer                        │
 ├──────────┬─────────┬──────────┬──────────┬───────────────┤
-│ MCP      │ Aegis   │ Hashi    │ Minato   │ Kura          │
-│ (agents) │ (sec)   │ (tasks)  │ (comms)  │ (store)       │
+│ MCP      │ Aegis   │ Hashi    │ Minato   │ Cloud API     │
+│ (agents) │ (sec)   │ (tasks)  │ (comms)  │ (SaaS)        │
 └──────────┴─────────┴──────────┴──────────┴───────────────┘
 ```
 
@@ -375,15 +455,23 @@ This means any agent in the ecosystem (Claude, Codex, local models) can query an
 - [ ] Local model support (Ollama)
 - [ ] CLAUDE.md / .cursorrules export
 
-**Phase 5: Ecosystem Integration**
+**Phase 5: Export & Ecosystem Integration**
+- [ ] `entropy export` — JSON, PostgreSQL, S3, webhook targets
 - [ ] MCP server mode (`entropy mcp`)
 - [ ] Aegis integration (security control plane)
 - [ ] Hashi integration (task delegation)
 - [ ] Minato integration (alert routing)
 - [ ] Kura integration (cross-project storage)
-- [ ] BMO Control Centre panel
 
-**Phase 6: Multi-lang & Team**
+**Phase 6: Entropy Cloud (SaaS)**
+- [ ] Ingest API — receive scores/rules from CLI over HTTPS
+- [ ] Hosted PostgreSQL + S3 backend
+- [ ] Team dashboard — cross-repo trends, heatmaps, per-dev stats
+- [ ] Notifications — Slack/Discord/email alerts on score drops
+- [ ] Analytics — velocity vs entropy correlation, sprint budgets
+- [ ] `entropy cloud login/connect/push/status` CLI commands
+
+**Phase 7: Multi-lang & Team**
 - [ ] Python + TypeScript support via tree-sitter
 - [ ] Rule packs (security, performance, ai-hygiene)
 - [ ] Shared registry (publish/pull rule packs)
