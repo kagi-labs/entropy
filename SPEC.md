@@ -48,9 +48,11 @@ entropy add-rule           # Capture a new rule from a mistake
 entropy trend              # Show score history (ASCII chart in terminal)
 entropy diff [branch]      # Compare entropy between current and target branch
 entropy blame [file]       # Show which changes introduced the most entropy
+entropy scan --ai          # Deep AI-powered security & complexity analysis
 entropy doctor             # Diagnose codebase health issues with suggestions
 entropy export             # Export rules + scores for external dashboards
 entropy serve              # Local web dashboard (localhost)
+entropy mcp                # Start MCP server for agent integration
 ```
 
 ## Core Components
@@ -246,14 +248,69 @@ Top issues:
 
 **GitLab CI, Jenkins, etc.:** Just run `entropy check --ci`
 
-### 6. AI-Aware Features
+### 6. AI Security & Complexity Analysis
 
-- **Anti-pattern detection:** Detect common AI-generated code smells (excessive abstraction, inconsistent naming, duplicated-with-slight-variation patterns)
+Inspired by [Anthropic's Claude Code Security](https://www.anthropic.com/news/claude-code-security) — but open, local-first, and integrated with the kagi-labs agent OS.
+
+**AI-powered analysis** (beyond regex pattern matching):
+- **Semantic security scan:** Use LLM reasoning to find business logic flaws, broken access control, data flow issues — not just pattern matches
+- **Multi-stage verification:** Find an issue → attempt to disprove it → only report confirmed findings (reduces false positives)
+- **Confidence ratings:** Each finding gets a confidence score (high: deterministic check, medium: heuristic, low: AI inference)
+- **AI anti-pattern detection:** Detect AI-generated code smells (excessive abstraction, inconsistent naming, duplicated-with-slight-variation patterns)
 - **Auto-rule suggestion:** After N similar review comments, suggest creating a rule
 - **CLAUDE.md / .cursorrules sync:** Export entropy rules as AI coding assistant instructions
-- **MCP server mode:** `entropy mcp` — expose rules and scores to AI agents via Model Context Protocol
 
-### 7. Team Features (Future)
+```bash
+entropy scan --ai          # Deep AI-powered analysis (requires LLM)
+entropy scan --ai --model local  # Use local model (Ollama)
+entropy scan --ai --model api    # Use API (Claude/GPT)
+```
+
+### 7. Kagi Labs Ecosystem Integration
+
+Entropy is standalone but designed to plug into the kagi-labs agent OS:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Agent OS Layer                        │
+├──────────┬───────────┬──────────┬───────────────────────┤
+│  Mikado  │  Minato   │  Hashi   │  Aegis                │
+│  (soul)  │  (comms)  │  (tasks) │  (security)           │
+├──────────┴───────────┴──────────┴───────────────────────┤
+│                   Tool Layer                             │
+├──────────┬───────────┬──────────┬───────────────────────┤
+│ Entropy  │  Kura     │  Kaji    │  BMO Control Centre   │
+│ (health) │  (store)  │  (forge) │  (dashboard)          │
+└──────────┴───────────┴──────────┴───────────────────────┘
+```
+
+**Integration points:**
+
+| System | How Entropy connects | Direction |
+|--------|---------------------|-----------|
+| **Aegis** (security control plane) | Entropy feeds security findings to Aegis for human-in-the-loop approval before auto-fixes. Aegis policy rules can trigger entropy scans on tool calls | Entropy ↔ Aegis |
+| **Hashi** (task engine) | Hashi delegates `entropy check` as a task in CI/review workflows. Entropy results inform Hashi's task planning (skip deploy if score < threshold) | Hashi → Entropy |
+| **Kaji** (agent forge) | Kaji's review phase runs `entropy check` automatically. Findings feed back into spec refinement. Codex reviewer gets entropy context | Kaji → Entropy |
+| **Kura** (storehouse) | Entropy scores + rule violation history stored in Kura for cross-project search and long-term trending | Entropy → Kura |
+| **Mikado** (soul/nervous system) | Entropy health events published to Mikado's event bus. Score drops trigger alerts through the nervous system | Entropy → Mikado |
+| **Minato** (channel harbor) | Entropy reports routed through Minato to Discord/Slack. "Score dropped to 62 on project X" | Entropy → Minato |
+| **BMO Control Centre** | Entropy dashboard embedded as a panel in the Control Centre web UI | Entropy → BCC |
+
+**MCP server mode:**
+```bash
+entropy mcp                # Start MCP server — expose rules and scores to any AI agent
+```
+
+Tools exposed via MCP:
+- `entropy_score(path)` — get health score for a codebase
+- `entropy_check(path, files)` — check specific files against rules
+- `entropy_rules(path)` — list all project rules
+- `entropy_deps(path)` — check dependency vulnerabilities
+- `entropy_add_rule(rule)` — create a new rule programmatically
+
+This means any agent in the ecosystem (Claude, Codex, local models) can query and contribute to entropy data.
+
+### 8. Team Features (Future)
 
 - **Shared rule registry:** Publish/subscribe to rule packs (`entropy registry push/pull`)
 - **Org-wide baselines:** Set minimum scores across repos
@@ -262,19 +319,24 @@ Top issues:
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│                  CLI (cobra)                      │
-├──────┬──────┬──────┬───────┬──────┬──────────────┤
-│score │check │deps  │trend  │serve │ add-rule     │
-├──────┴──────┴──────┴───────┴──────┴──────────────┤
-│                 Core Engine                       │
-├──────────┬──────────┬────────────┬───────────────┤
-│ Scanner  │Rule Eval │Dep Auditor │ Trend Engine  │
-├──────────┴──────────┴────────────┴───────────────┤
-│                Storage Layer                      │
-├─────────────┬──────────────┬─────────────────────┤
-│ SQLite (db) │ YAML (rules) │ OSV API (deps)      │
-└─────────────┴──────────────┴─────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                      CLI (cobra)                          │
+├──────┬──────┬──────┬──────┬───────┬──────┬───────────────┤
+│score │check │deps  │scan  │trend  │serve │ mcp           │
+├──────┴──────┴──────┴──────┴───────┴──────┴───────────────┤
+│                     Core Engine                           │
+├──────────┬──────────┬────────────┬───────────┬───────────┤
+│ Scanner  │Rule Eval │Dep Auditor │ AI Engine │ Trends    │
+├──────────┴──────────┴────────────┴───────────┴───────────┤
+│                    Storage Layer                          │
+├─────────────┬──────────────┬─────────────────────────────┤
+│ SQLite (db) │ YAML (rules) │ OSV API (deps)              │
+├─────────────┴──────────────┴─────────────────────────────┤
+│                  Integration Layer                        │
+├──────────┬─────────┬──────────┬──────────┬───────────────┤
+│ MCP      │ Aegis   │ Hashi    │ Minato   │ Kura          │
+│ (agents) │ (sec)   │ (tasks)  │ (comms)  │ (store)       │
+└──────────┴─────────┴──────────┴──────────┴───────────────┘
 ```
 
 **Tech stack:**
@@ -282,7 +344,9 @@ Top issues:
 - **CLI framework:** Cobra
 - **DB:** SQLite (via modernc.org/sqlite — pure Go, no CGO)
 - **Parsing:** go/ast (Go), tree-sitter (multi-lang)
+- **AI engine:** Ollama (local) or Claude/GPT API (remote) — optional, core metrics work without AI
 - **Dashboard:** Terminal charts (termdash or lipgloss), embedded web UI (templ + htmx)
+- **Integration:** MCP server, event publishing (Mikado-compatible)
 
 ## MVP Scope
 
@@ -304,13 +368,23 @@ Top issues:
 - [ ] `entropy diff` — compare branches
 - [ ] Score threshold alerts
 
-**Phase 4: AI & Multi-lang**
-- [ ] AI anti-pattern detection
+**Phase 4: AI Security & Complexity Analysis**
+- [ ] `entropy scan --ai` — LLM-powered semantic analysis
+- [ ] Multi-stage verification (find → disprove → confirm)
+- [ ] Confidence ratings on findings
+- [ ] Local model support (Ollama)
 - [ ] CLAUDE.md / .cursorrules export
-- [ ] Python + TypeScript support via tree-sitter
-- [ ] MCP server mode
 
-**Phase 5: Team & Registry**
+**Phase 5: Ecosystem Integration**
+- [ ] MCP server mode (`entropy mcp`)
+- [ ] Aegis integration (security control plane)
+- [ ] Hashi integration (task delegation)
+- [ ] Minato integration (alert routing)
+- [ ] Kura integration (cross-project storage)
+- [ ] BMO Control Centre panel
+
+**Phase 6: Multi-lang & Team**
+- [ ] Python + TypeScript support via tree-sitter
 - [ ] Rule packs (security, performance, ai-hygiene)
 - [ ] Shared registry (publish/pull rule packs)
 - [ ] GitHub Action
