@@ -42,6 +42,8 @@ entropy score              # Calculate current health score
 entropy score --json       # Machine-readable output
 entropy check              # Run all rules against staged/changed files
 entropy check --ci         # Strict mode for CI (non-zero exit on violations)
+entropy deps               # Scan dependencies for known vulnerabilities
+entropy deps --severity high  # Filter by severity
 entropy add-rule           # Capture a new rule from a mistake
 entropy trend              # Show score history (ASCII chart in terminal)
 entropy diff [branch]      # Compare entropy between current and target branch
@@ -57,22 +59,95 @@ entropy serve              # Local web dashboard (localhost)
 
 Measures codebase health across multiple dimensions:
 
-| Metric | What it measures | Weight |
-|--------|-----------------|--------|
-| **Cyclomatic complexity** | Control flow complexity per function | 25% |
-| **Duplication ratio** | Copy-paste / near-duplicate code blocks | 20% |
-| **Coupling score** | Cross-module/package dependencies | 15% |
-| **File churn** | Files changing too frequently (design smell) | 15% |
-| **Convention drift** | Inconsistent patterns across codebase | 15% |
-| **Dead code** | Unreachable or unused exports | 10% |
+| Metric | What it measures | How it's calculated | Weight |
+|--------|-----------------|---------------------|--------|
+| **Cyclomatic complexity** | Control flow complexity per function | Count decision points: `if`, `for`, `switch`, `case`, `&&`, `\|\|`. Score = branches + 1. Uses `go/ast` to walk AST and count `*ast.IfStmt`, `*ast.ForStmt`, `*ast.SwitchStmt`, `*ast.BinaryExpr` | 20% |
+| **Duplication ratio** | Copy-paste / near-duplicate code blocks | Hash rolling windows of N lines (default 6). Normalize whitespace, MD5 each window, find collisions across files. Similar to PMD/CPD algorithm | 15% |
+| **Coupling score** | Cross-module/package dependencies | Parse imports per package, build dependency graph. Measure fan-in (who depends on me) and fan-out (who do I depend on). High fan-out = high coupling | 15% |
+| **File churn** | Files changing too frequently (design smell) | `git log --numstat` over last N commits. Count changes per file, weighted by recency (recent changes count more). High churn relative to file size = design smell | 10% |
+| **Convention drift** | Inconsistent patterns across codebase | Detect naming style inconsistencies (camelCase vs snake_case mix), error handling pattern variance, file structure anomalies | 10% |
+| **Dead code** | Unreachable or unused exports | Exported symbols never referenced outside their package. `go/ast` for declarations + cross-reference analysis | 10% |
+| **Dependency vulnerabilities** | Known CVEs in dependencies | Parse `go.mod`/`package.json`/`requirements.txt`/`Cargo.toml`, query [OSV API](https://osv.dev) for known vulnerabilities. Count by severity (critical/high/medium/low) | 20% |
+
+#### Score Calculation
+
+```
+score = 100 - Σ penalties
+
+Where each penalty is normalized to its weight:
+  complexity_penalty  = min(weight, (avg_complexity / threshold) * weight)
+  duplication_penalty = min(weight, (dup_ratio / threshold) * weight)
+  coupling_penalty    = min(weight, (avg_fanout / threshold) * weight)
+  churn_penalty       = min(weight, (churn_ratio / threshold) * weight)
+  drift_penalty       = min(weight, (drift_score / threshold) * weight)
+  dead_code_penalty   = min(weight, (dead_ratio / threshold) * weight)
+  vuln_penalty        = min(weight, (weighted_vuln_count / threshold) * weight)
+```
+
+**Default thresholds** (configurable in `config.yaml`):
+
+| Metric | Green | Yellow | Red |
+|--------|-------|--------|-----|
+| Complexity per function | < 10 | 10-20 | > 20 |
+| Duplication ratio | < 3% | 3-8% | > 8% |
+| Avg fan-out per package | < 5 | 5-10 | > 10 |
+| File churn (changes/week) | < 5 | 5-15 | > 15 |
+| Dead code ratio | < 2% | 2-5% | > 5% |
+| Critical/High CVEs | 0 | 1-2 | > 2 |
 
 Output: **Health score (0-100)** per file, per module, and aggregate.
 
-Language support (planned):
-- Go (primary)
-- Python
-- TypeScript/JavaScript
-- Rust
+#### Language Support
+
+| Language | Parser | Dependency file | Status |
+|----------|--------|----------------|--------|
+| Go | `go/ast` (stdlib) | `go.mod` | Primary |
+| Python | tree-sitter | `requirements.txt`, `pyproject.toml` | Planned |
+| TypeScript/JS | tree-sitter | `package.json` | Planned |
+| Rust | tree-sitter | `Cargo.toml` | Planned |
+
+### 1b. Dependency Security Scanner
+
+Checks project dependencies against the [OSV (Open Source Vulnerabilities)](https://osv.dev) database — Google's free, open, universal vulnerability database covering Go, npm, PyPI, crates.io, and more.
+
+```bash
+entropy deps                 # Scan dependencies, check for known vulns
+entropy deps --format json   # Machine-readable output for CI
+entropy deps --severity high # Only show high/critical
+```
+
+**How it works:**
+1. Parse dependency manifest (`go.mod`, `package.json`, etc.)
+2. Extract package names + versions
+3. Query OSV API: `POST https://api.osv.dev/v1/query`
+4. Report findings grouped by severity
+
+**Example output:**
+```
+Dependency Security Report
+──────────────────────────
+📦 3 dependencies scanned, 2 vulnerabilities found
+
+CRITICAL  golang.org/x/crypto@v0.17.0
+          GHSA-45x7-px36-x8w8 — SSH server auth bypass
+          Fixed in: v0.31.0
+          → go get golang.org/x/crypto@latest
+
+MEDIUM    golang.org/x/net@v0.19.0
+          CVE-2023-45288 — HTTP/2 rapid reset
+          Fixed in: v0.23.0
+          → go get golang.org/x/net@latest
+
+Score impact: -15 (2 vulns: 1 critical, 1 medium)
+```
+
+**Language-specific tools entropy wraps:**
+- Go: `govulncheck` (official, reachability analysis)
+- Python: `pip-audit`
+- Node: `npm audit`
+- Rust: `cargo audit`
+
+Falls back to OSV API when language-specific tools aren't installed.
 
 ### 2. Rule System (Mistake → Knowledge → Enforcement)
 
@@ -154,7 +229,7 @@ Top issues:
 **GitHub Actions:**
 ```yaml
 - name: Entropy Check
-  uses: olesbsn/entropy-action@v1
+  uses: kagi-labs/entropy-action@v1
   with:
     fail-on: error          # Fail build on error-severity rules
     score-threshold: 70     # Fail if health drops below 70
@@ -164,7 +239,7 @@ Top issues:
 **Pre-commit hook:**
 ```yaml
 # .pre-commit-config.yaml
-- repo: https://github.com/olesbsn/entropy
+- repo: https://github.com/kagi-labs/entropy
   hooks:
     - id: entropy-check
 ```
@@ -187,19 +262,19 @@ Top issues:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│              CLI (cobra)                │
-├──────┬──────┬───────┬──────┬────────────┤
-│score │check │trend  │serve │ add-rule   │
-├──────┴──────┴───────┴──────┴────────────┤
-│            Core Engine                  │
-├────────┬──────────┬─────────────────────┤
-│Scanner │Rule Eval │ Trend Engine        │
-├────────┴──────────┴─────────────────────┤
-│         Storage Layer                   │
-├──────────────┬──────────────────────────┤
-│ SQLite (db)  │ YAML (rules)            │
-└──────────────┴──────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                  CLI (cobra)                      │
+├──────┬──────┬──────┬───────┬──────┬──────────────┤
+│score │check │deps  │trend  │serve │ add-rule     │
+├──────┴──────┴──────┴───────┴──────┴──────────────┤
+│                 Core Engine                       │
+├──────────┬──────────┬────────────┬───────────────┤
+│ Scanner  │Rule Eval │Dep Auditor │ Trend Engine  │
+├──────────┴──────────┴────────────┴───────────────┤
+│                Storage Layer                      │
+├─────────────┬──────────────┬─────────────────────┤
+│ SQLite (db) │ YAML (rules) │ OSV API (deps)      │
+└─────────────┴──────────────┴─────────────────────┘
 ```
 
 **Tech stack:**
